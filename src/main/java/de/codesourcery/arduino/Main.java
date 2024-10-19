@@ -111,9 +111,10 @@ public class Main extends JFrame
         final JMenu animationSpeed = new JMenu("Animation Speed");
         bar.add( animationSpeed );
 
-        animationSpeed.add( menuItem("60 FPS", ev -> getProject().setAnimationSpeedMillis( 16 ) ));
-        animationSpeed.add( menuItem("30 FPS", ev -> getProject().setAnimationSpeedMillis( 32 ) ));
-        animationSpeed.add( menuItem("15 FPS", ev -> getProject().setAnimationSpeedMillis( 48 ) ));
+        animationSpeed.add( menuItem("60 FPS", ev -> getProject().setAnimationSpeedMillis( 1000/60 ) ));
+        animationSpeed.add( menuItem("30 FPS", ev -> getProject().setAnimationSpeedMillis( 1000/30 ) ));
+        animationSpeed.add( menuItem("15 FPS", ev -> getProject().setAnimationSpeedMillis( 1000/15 ) ));
+        animationSpeed.add( menuItem("5 FPS", ev -> getProject().setAnimationSpeedMillis( 1000/5 ) ));
 
         menu.add( menuItem("Quit", ev -> {
             quit();
@@ -204,6 +205,7 @@ public class Main extends JFrame
             p.setFile( file );
             p.save();
             configuration.addRecentFile( p.getFile() );
+            refreshRecentFilesMenu();
             setTitle( p.getName()+" - "+p.getFile().getAbsolutePath() );
         }
         catch( IOException e )

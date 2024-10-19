@@ -3,11 +3,16 @@ package de.codesourcery.arduino;
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Graphics;
+import java.awt.Point;
+import java.awt.Rectangle;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.util.List;
 import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.JViewport;
 import org.apache.commons.lang3.Validate;
+import de.codesourcery.arduino.events.CurrentImageChangedEvent;
 
 public class ImageSelectionPanel extends JPanel
 {
@@ -63,7 +68,23 @@ public class ImageSelectionPanel extends JPanel
     {
         Validate.notNull( selectedImage, "selectedImage must not be null" );
         this.selectedImage = selectedImage;
-        System.out.println("Selected image: "+selectedImage);
+        final int idx = getProject().getImages().indexOf( selectedImage );
+        final Rectangle imageRect = new Rectangle();
+        getPreviewBounds( idx, imageRect );
+        final JViewport vp = (JViewport) getParent();
+        final Rectangle viewRect = vp.getViewRect();
+
+        if ( imageRect.x < viewRect.x )
+        {
+            final Point pos = vp.getViewPosition();
+            pos.x = Math.max( 0, imageRect.x - 1 );
+            vp.setViewPosition( pos );
+        } else
+        {
+            vp.scrollRectToVisible( imageRect );
+        }
+        update();
+        EventBus.send( new CurrentImageChangedEvent( this, getProject(), selectedImage) );
     }
 
     public void setProject(Project project)
@@ -103,6 +124,11 @@ public class ImageSelectionPanel extends JPanel
         update();
     }
 
+    private void getPreviewBounds(int imageIndex, Rectangle r) {
+        final int startX = x0 + imageIndex* IMG_SPACING + imageIndex* imgWidth;
+        r.setBounds( startX-1, y0-1, imgWidth, imgHeight );
+    }
+
     @Override
     protected void paintComponent(Graphics g)
     {
@@ -120,16 +146,18 @@ public class ImageSelectionPanel extends JPanel
         imgWidth = (w - (images.size() * IMG_SPACING)) / images.size();
         imgHeight = (int) (h*0.95f);
 
+        final Rectangle tmp = new Rectangle();
+
         for ( int i = 0; i < images.size(); i++ )
         {
             final Image image = images.get( i );
-            final int startX = x0 + i* IMG_SPACING + i* imgWidth;
+            getPreviewBounds( i, tmp );
 
             g.setColor( image == selectedImage ? Color.RED : Color.WHITE );
-            g.drawRect( startX-1, y0-1, imgWidth+1, imgHeight+1 );
+            g.drawRect( tmp.x, tmp.y, tmp.width, tmp.height );
 
             final java.awt.Image toDraw = image.render();
-            g.drawImage( toDraw, startX, y0, imgWidth, imgHeight, null  );
+            g.drawImage( toDraw, tmp.x+1, tmp.y + 1, tmp.width-1, tmp.height-1, null  );
         }
     }
 
@@ -139,7 +167,7 @@ public class ImageSelectionPanel extends JPanel
         final int idx = images.indexOf( getSelectedImage() );
         project.add( idx+1, copy );
         setSelectedImage( copy );
-        repaint();
+        update();
     }
 
     public void deleteImage(Image image) {
@@ -148,9 +176,9 @@ public class ImageSelectionPanel extends JPanel
         project.delete( image );
         if ( selectedImage == image )
         {
-            selectedImage = idx < images.size() ? images.get( idx ) : images.getLast();
+            setSelectedImage( idx < images.size() ? images.get( idx ) : images.getLast() );
         }
-        repaint();
+        update();
     }
 
     public boolean selectPreviousImage()

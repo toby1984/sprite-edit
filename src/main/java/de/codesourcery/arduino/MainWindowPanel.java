@@ -5,6 +5,7 @@ import java.awt.Graphics;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Point;
+import java.awt.Toolkit;
 import java.awt.event.InputEvent;
 import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
@@ -15,9 +16,17 @@ import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.Timer;
 import org.apache.commons.lang3.Validate;
+import de.codesourcery.arduino.events.CurrentImageChangedEvent;
 
 final class MainWindowPanel extends JPanel
 {
+    private static final Color LIGHT_BLUE;
+
+    static {
+        final Color c = Color.BLUE.brighter();
+        LIGHT_BLUE = new Color(c.getRed(),c.getGreen(),c.getBlue(), 128 );
+    }
+
     public enum Mode {
         SET,CLEAR
     }
@@ -27,12 +36,20 @@ final class MainWindowPanel extends JPanel
     private float dx, dy, x0, y0;
 
     private boolean animate;
+    private boolean renderPreviousFrameOutline = true;
 
     private Timer animationTimer;
 
     private final JPanel renderPanel = new JPanel()
     {
+
         {
+            EventBus.register( ev -> {
+                if ( ev instanceof CurrentImageChangedEvent ) {
+                    repaint();
+                }
+            });
+
             setFocusable( true );
             requestFocus();
             final MouseAdapter listener = new MouseAdapter()
@@ -140,20 +157,26 @@ final class MainWindowPanel extends JPanel
             addMouseMotionListener( listener );
         }
 
+        private static int round(float x) {
+            return Math.round(x);
+        }
+
         @Override
         protected void paintComponent(Graphics g)
         {
             super.paintComponent( g );
+
             g.setColor( Color.BLACK );
             g.fillRect( 0, 0, getWidth(), getHeight() );
 
-            System.out.println( "PANEL: " + getWidth() + "x" + getHeight() );
             dx = getWidth() * 0.9f / 8;
             dy = getHeight() * 0.9f / 8;
 
             x0 = getWidth() * 0.02f;
             y0 = getHeight() * 0.02f;
 
+            final Image currentImage = imageSelectionPanel.getSelectedImage();
+            final Optional<Image> previous = imageSelectionPanel.getProject().getPreviousImage( currentImage );
             float px, py;
             for ( int y = 0; y < 8; y++ )
             {
@@ -161,21 +184,34 @@ final class MainWindowPanel extends JPanel
                 for ( int x = 0; x < 8; x++ )
                 {
                     px = x0 + x * dx;
-                    g.setColor( imageSelectionPanel.getSelectedImage().isSet( x, y ) ? Color.WHITE : Color.BLACK );
-                    g.fillRect( (int) px, (int) py, (int) dx, (int) dy );
+                    final boolean pixelSet = currentImage.isSet( x, y );
+                    Color c = Color.BLACK;
+                    if ( pixelSet)
+                    {
+                        c = Color.WHITE;
+                    } else {
+                        if ( renderPreviousFrameOutline && previous.isPresent() ) {
+                            if ( previous.get().isSet(x,y) ) {
+                                c = LIGHT_BLUE;
+                            }
+                        }
+                    }
+                    g.setColor(c);
+                    g.fillRect( round(px), round(py), round(dx), round(dy) );
                 }
             }
+
             // draw grid
             g.setColor( Color.WHITE );
             for ( int y = 0; y <= 8; y++ )
             {
                 py = y0 + y * dy;
-                g.drawLine( (int) x0, (int) py, (int) (x0 + 8 * dx), (int) py );
+                g.drawLine( round(x0), round(py), round(x0 + 8 * dx), round(py) );
             }
             for ( int x = 0; x <= 8; x++ )
             {
                 px = x0 + x * dx;
-                g.drawLine( (int) px, (int) y0, (int) px, (int) (y0 + 8 * dy) );
+                g.drawLine( round(px), round(y0), round(px), round(y0 + 8 * dy) );
             }
             g.setColor( Color.RED );
         }
@@ -194,15 +230,9 @@ final class MainWindowPanel extends JPanel
                 imageSelectionPanel.deleteImage(  imageSelectionPanel.getSelectedImage() );
                 renderPanel.repaint();
             } else if ( e.getKeyCode() == KeyEvent.VK_LEFT ) {
-                if ( imageSelectionPanel.selectPreviousImage() )
-                {
-                    renderPanel.repaint();
-                }
+                imageSelectionPanel.selectPreviousImage();
             } else if ( e.getKeyCode() == KeyEvent.VK_RIGHT ) {
-                if ( imageSelectionPanel.selectNextImage() )
-                {
-                    renderPanel.repaint();
-                }
+                imageSelectionPanel.selectNextImage();
             }
         }
 
@@ -217,10 +247,8 @@ final class MainWindowPanel extends JPanel
                 startAnimation();
             } else if ( e.getKeyChar() == 'd' ) {
                 imageSelectionPanel.duplicateImage();
-                renderPanel.repaint();
             } else if ( e.getKeyChar() == 'n' ) {
                 imageSelectionPanel.newImage();
-                renderPanel.repaint();
             } else if ( e.getKeyChar() == 'c' ) {
                 if ( imageSelectionPanel.getSelectedImage().clear() ) {
                     imageSelectionPanel.repaint();
@@ -273,6 +301,7 @@ final class MainWindowPanel extends JPanel
         imageSelectionPanel.setProject( project );
         renderPanel.repaint();
     }
+
     public Project getProject() {
         return imageSelectionPanel.getProject();
     }
@@ -282,12 +311,14 @@ final class MainWindowPanel extends JPanel
             stopAnimation();
         }
         animate = true;
+        renderPreviousFrameOutline = false;
         final int millis = imageSelectionPanel.getProject().getAnimationSpeedMillis();
         animationTimer = new Timer(millis, ev -> {
             final Image img = getProject().getNextImage( imageSelectionPanel.getSelectedImage() );
             imageSelectionPanel.setSelectedImage( img );
             imageSelectionPanel.repaint();
             renderPanel.repaint();
+            Toolkit.getDefaultToolkit().sync();
         });
         animationTimer.start();
     }
@@ -299,7 +330,10 @@ final class MainWindowPanel extends JPanel
     private void stopAnimation() {
         if ( animate )
         {
+            animate = false;
+            renderPreviousFrameOutline = true;
             animationTimer.stop();
+            renderPanel.repaint();
         }
     }
 }
